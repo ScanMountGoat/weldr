@@ -1,7 +1,6 @@
 //! Action to convert an LDraw file to another format.
 
 use crate::{
-    as_u8_slice,
     error::{Error, Utf8Error},
     gltf, Action, App, DiskResolver, GeometryCache,
 };
@@ -124,41 +123,38 @@ impl ConvertCommand {
         };
         gltf.nodes.push(node);
 
-        // TODO: Check the part type rather than the extension.
-        if filename.ends_with(".dat") {
-            // Create geometry if the node is a part.
-            let mesh_index = mesh_cache.entry(filename.into()).or_insert_with(|| {
-                let mesh_index = gltf.meshes.len() as u32;
-                let geometry = self.create_geometry(source_file, source_map);
-                // Don't set empty meshes to avoid import errors.
-                if !geometry.vertices.is_empty() && !geometry.triangle_indices.is_empty() {
-                    self.add_mesh(&geometry, gltf, buffer);
-                    Some(mesh_index)
-                } else {
-                    None
-                }
-            });
+        // Create geometry if any for this node
+        let opt_mesh_index = mesh_cache.entry(filename.into()).or_insert_with(|| {
+            let mesh_index = gltf.meshes.len() as u32;
+            let geometry = self.create_geometry(source_file, source_map);
+            // Don't set empty meshes to avoid import errors.
+            if !geometry.vertices.is_empty() && !geometry.triangle_indices.is_empty() {
+                self.add_mesh(&geometry, gltf, buffer);
+                Some(mesh_index)
+            } else {
+                None
+            }
+        });
+        gltf.nodes[node_index].mesh_index = *opt_mesh_index;
 
-            gltf.nodes[node_index].mesh_index = *mesh_index;
-        } else {
-            for cmd in &source_file.cmds {
-                if let Command::SubFileRef(sfr_cmd) = cmd {
-                    if let Some(subfile) = source_map.get(&sfr_cmd.file) {
-                        // Don't apply node transforms to preserve the scene hierarchy.
-                        // Applications should handle combining the transforms.
-                        let transform = sfr_cmd.matrix();
+        // Recursively parse sub-files
+        for cmd in &source_file.cmds {
+            if let Command::SubFileRef(sfr_cmd) = cmd {
+                if let Some(subfile) = source_map.get(&sfr_cmd.file) {
+                    // Don't apply node transforms to preserve the scene hierarchy.
+                    // Applications should handle combining the transforms.
+                    let transform = sfr_cmd.matrix();
 
-                        let child_node_index = self.add_nodes(
-                            &sfr_cmd.file,
-                            subfile,
-                            Some(transform),
-                            source_map,
-                            gltf,
-                            buffer,
-                            mesh_cache,
-                        );
-                        gltf.nodes[node_index].children.push(child_node_index);
-                    }
+                    let child_node_index = self.add_nodes(
+                        &sfr_cmd.file,
+                        subfile,
+                        Some(transform),
+                        source_map,
+                        gltf,
+                        buffer,
+                        mesh_cache,
+                    );
+                    gltf.nodes[node_index].children.push(child_node_index);
                 }
             }
         }
@@ -255,8 +251,9 @@ impl ConvertCommand {
         gltf: &mut gltf::Gltf,
         buffer: &mut Vec<u8>,
     ) {
+        // TODO: glTF is LE only; should convert on BE platforms
         let vertices = &geometry_cache.vertices;
-        let vertices_bytes: &[u8] = unsafe { as_u8_slice(vertices) };
+        let vertices_bytes: &[u8] = bytemuck::cast_slice(&vertices[..]);
 
         // TODO: Line indices?
         let vertex_buffer_view_index = gltf.buffer_views.len() as u32;
@@ -296,16 +293,19 @@ impl ConvertCommand {
             let attributes = HashMap::from([("POSITION".to_string(), gltf.accessors.len() as u32)]);
             gltf.accessors.push(vertex_accessor);
 
-            // TODO: Use bytemuck instead.
-            let triangle_indices = &geometry_cache.triangle_indices;
-            let triangle_indices_bytes: &[u8] = unsafe { as_u8_slice(triangle_indices) };
+            // TODO: glTF is LE only; should convert on BE platforms
+            let triangle_indices_bytes: &[u8] =
+                bytemuck::cast_slice(&geometry_cache.triangle_indices[..]);
 
+            let byte_offset = buffer.len() as u32;
+            let byte_length = triangle_indices_bytes.len() as u32;
             let index_buffer_view_index = gltf.buffer_views.len() as u32;
+
             gltf.buffer_views.push(gltf::BufferView {
                 name: Some("index_buffer".to_string()),
                 buffer_index: 0,
-                byte_length: triangle_indices_bytes.len() as u32,
-                byte_offset: buffer.len() as u32,
+                byte_length,
+                byte_offset,
                 byte_stride: None,
                 target: Some(gltf::BufferTarget::ElementArrayBuffer as u32),
             });

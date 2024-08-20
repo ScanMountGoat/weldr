@@ -59,8 +59,8 @@ struct SimpleLogger {
 static mut LOGGER: SimpleLogger = SimpleLogger::new();
 
 impl SimpleLogger {
-    const fn new() -> SimpleLogger {
-        SimpleLogger {
+    const fn new() -> Self {
+        Self {
             log_level: log::LevelFilter::Info,
             color_enabled: false,
             emoji_enabled: false,
@@ -183,11 +183,11 @@ struct DiskResolver {
 }
 
 impl DiskResolver {
-    fn new() -> DiskResolver {
-        DiskResolver { base_paths: vec![] }
+    fn new() -> Self {
+        Self { base_paths: vec![] }
     }
 
-    fn new_from_catalog<P: AsRef<Path>>(catalog_path: P) -> Result<DiskResolver, Error> {
+    fn new_from_catalog<P: AsRef<Path>>(catalog_path: P) -> Result<Self, Error> {
         let catalog_path = std::fs::canonicalize(catalog_path)
             .map_err(|e| Error::NotFound(format!("catalog path not found ({})", e)))?;
         let base_paths = vec![
@@ -195,7 +195,7 @@ impl DiskResolver {
             catalog_path.join("parts"),
             catalog_path.join("parts").join("s"),
         ];
-        Ok(DiskResolver { base_paths })
+        Ok(Self { base_paths })
     }
 
     fn add_path<P: AsRef<Path>>(&mut self, path: P) -> Result<(), Error> {
@@ -280,8 +280,8 @@ struct GeometryCache {
 }
 
 impl GeometryCache {
-    fn new() -> GeometryCache {
-        GeometryCache {
+    fn new() -> Self {
+        Self {
             vertices: vec![],
             vertex_map: HashMap::new(),
             line_indices: vec![],
@@ -305,6 +305,7 @@ impl GeometryCache {
     }
 
     fn add_line(&mut self, draw_ctx: &DrawContext, vertices: &[Vec3; 2]) {
+        trace!("LINE: {:?}", vertices);
         let i0 = self.insert_vertex(&vertices[0], &draw_ctx.transform);
         let i1 = self.insert_vertex(&vertices[1], &draw_ctx.transform);
         self.line_indices.push(i0);
@@ -312,6 +313,7 @@ impl GeometryCache {
     }
 
     fn add_triangle(&mut self, draw_ctx: &DrawContext, vertices: &[Vec3; 3]) {
+        trace!("TRI: {:?}", vertices);
         let i0 = self.insert_vertex(&vertices[0], &draw_ctx.transform);
         let i1 = self.insert_vertex(&vertices[1], &draw_ctx.transform);
         let i2 = self.insert_vertex(&vertices[2], &draw_ctx.transform);
@@ -321,17 +323,18 @@ impl GeometryCache {
     }
 
     fn add_quad(&mut self, draw_ctx: &DrawContext, vertices: &[Vec3; 4]) {
-        self.add_triangle(draw_ctx, &[vertices[0], vertices[1], vertices[2]]);
-        self.add_triangle(draw_ctx, &[vertices[0], vertices[2], vertices[3]]);
+        trace!("QUAD: {:?}", vertices);
+        let i0 = self.insert_vertex(&vertices[0], &draw_ctx.transform);
+        let i1 = self.insert_vertex(&vertices[1], &draw_ctx.transform);
+        let i2 = self.insert_vertex(&vertices[2], &draw_ctx.transform);
+        let i3 = self.insert_vertex(&vertices[3], &draw_ctx.transform);
+        self.triangle_indices.push(i0);
+        self.triangle_indices.push(i2);
+        self.triangle_indices.push(i1);
+        self.triangle_indices.push(i0);
+        self.triangle_indices.push(i3);
+        self.triangle_indices.push(i2);
     }
-}
-
-/// Transform a slice of something sized into a slice of u8, for binary writing.
-unsafe fn as_u8_slice<T: Sized>(p: &[T]) -> &[u8] {
-    ::std::slice::from_raw_parts(
-        p.as_ptr() as *const u8,
-        ::std::mem::size_of::<T>() * p.len(),
-    )
 }
 
 #[cfg(not(target_os = "windows"))]
@@ -389,7 +392,7 @@ mod tests {
     fn test_as_u8_slice() {
         assert_eq!(12, std::mem::size_of::<Vec3>());
         let v = vec![Vec3::new(1.0, 2.0, 4.0), Vec3::new(1.0, 2.0, 4.0)];
-        let b: &[u8] = unsafe { as_u8_slice(&v[..]) };
+        let b: &[u8] = bytemuck::cast_slice(&v[..]);
         assert_eq!(24, b.len());
     }
 
