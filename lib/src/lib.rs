@@ -69,7 +69,7 @@ extern crate log;
 
 use std::{collections::HashMap, path::Path, str};
 
-pub use glam::{Mat4, Vec3, Vec4};
+pub use glam::{Mat4, Vec2, Vec3, Vec4};
 
 pub mod error;
 
@@ -582,6 +582,8 @@ pub struct TriangleCmd {
     pub color: u32,
     /// Vertices of the triangle.
     pub vertices: [Vec3; 3],
+    /// UV texture coordinates for texture mapping extensions.
+    pub uvs: Option<[Vec2; 3]>,
 }
 
 /// [Line Type 4](https://www.ldraw.org/article/218.html#lt4) LDraw command:
@@ -593,6 +595,8 @@ pub struct QuadCmd {
     /// Vertices of the quad. In theory they are guaranteed to be coplanar according to the LDraw
     /// specification, although no attempt is made to validate this property.
     pub vertices: [Vec3; 4],
+    /// UV texture coordinates for texture mapping extensions.
+    pub uvs: Option<[Vec2; 4]>,
 }
 
 /// [Line Type 5](https://www.ldraw.org/article/218.html#lt5) LDraw command:
@@ -914,6 +918,7 @@ mod tests {
                     Vec3::new(1.0, 0.0, 0.0),
                     Vec3::new(0.0, 1.0, 0.0),
                 ],
+                uvs: None,
             })],
         };
         source_map.insert("tata", source_file);
@@ -926,6 +931,7 @@ mod tests {
                         Vec3::new(1.0, 0.0, 1.0),
                         Vec3::new(0.0, 1.0, 1.0),
                     ],
+                    uvs: None,
                 }),
                 Command::Comment(CommentCmd::new("!APPLICATION STUFF")),
                 Command::SubFileRef(SubFileRefCmd {
@@ -944,6 +950,7 @@ mod tests {
                         Vec3::new(1.0, 1.0, 1.0),
                         Vec3::new(1.0, 1.0, 0.0),
                     ],
+                    uvs: None,
                 }),
             ],
         };

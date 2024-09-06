@@ -1,5 +1,5 @@
 use base64::Engine;
-use glam::Vec3;
+use glam::{Vec2, Vec3};
 use nom::{
     branch::alt,
     bytes::complete::{tag, tag_no_case, take_while, take_while1, take_while_m_n},
@@ -383,6 +383,11 @@ fn meta_cmd(i: &[u8]) -> IResult<&[u8], Command> {
     ))(i)
 }
 
+fn read_vec2(i: &[u8]) -> IResult<&[u8], Vec2> {
+    let (i, (x, _, y)) = tuple((float, sp, float))(i)?;
+    Ok((i, Vec2 { x, y }))
+}
+
 fn read_vec3(i: &[u8]) -> IResult<&[u8], Vec3> {
     let (i, (x, _, y, _, z)) = tuple((float, sp, float, sp, float))(i)?;
     Ok((i, Vec3 { x, y, z }))
@@ -450,11 +455,22 @@ fn tri_cmd(i: &[u8]) -> IResult<&[u8], Command> {
     let (i, v3) = read_vec3(i)?;
     let (i, _) = space0(i)?;
 
+    let (i, uvs) = opt(complete(|i| {
+        let (i, uv1) = read_vec2(i)?;
+        let (i, _) = sp(i)?;
+        let (i, uv2) = read_vec2(i)?;
+        let (i, _) = sp(i)?;
+        let (i, uv3) = read_vec2(i)?;
+        let (i, _) = space0(i)?;
+        Ok((i, [uv1, uv2, uv3]))
+    }))(i)?;
+
     Ok((
         i,
         Command::Triangle(TriangleCmd {
             color,
             vertices: [v1, v2, v3],
+            uvs,
         }),
     ))
 }
@@ -471,11 +487,24 @@ fn quad_cmd(i: &[u8]) -> IResult<&[u8], Command> {
     let (i, v4) = read_vec3(i)?;
     let (i, _) = space0(i)?;
 
+    let (i, uvs) = opt(complete(|i| {
+        let (i, uv1) = read_vec2(i)?;
+        let (i, _) = sp(i)?;
+        let (i, uv2) = read_vec2(i)?;
+        let (i, _) = sp(i)?;
+        let (i, uv3) = read_vec2(i)?;
+        let (i, _) = space0(i)?;
+        let (i, uv4) = read_vec2(i)?;
+        let (i, _) = space0(i)?;
+        Ok((i, [uv1, uv2, uv3, uv4]))
+    }))(i)?;
+
     Ok((
         i,
         Command::Quad(QuadCmd {
             color,
             vertices: [v1, v2, v3, v4],
+            uvs,
         }),
     ))
 }
@@ -1269,6 +1298,7 @@ mod tests {
                 Vec3::new(0.9239, 1.0, 0.3827),
                 Vec3::new(0.9239, 0.0, 0.3827),
             ],
+            uvs: None,
         });
         assert_eq!(
             read_line(b"3 16 1 1 0 0.9239 1 0.3827 0.9239 0 0.3827"),
@@ -1281,6 +1311,7 @@ mod tests {
                 Vec3::new(0.9239, 1.0, 0.3827),
                 Vec3::new(0.9239, 0.0, 0.3827),
             ],
+            uvs: None,
         });
         assert_eq!(
             // Note: extra spaces at end
@@ -1299,9 +1330,54 @@ mod tests {
                 Vec3::new(0.9239, 0.0, 0.3827),
                 Vec3::new(1.0, 0.0, 0.0),
             ],
+            uvs: None,
         });
         assert_eq!(
             read_line(b"4 16 1 1 0 0.9239 1 0.3827 0.9239 0 0.3827 1 0 0"),
+            Ok((&b""[..], res))
+        );
+    }
+
+    #[test]
+    fn test_read_tri_cmd_uvs() {
+        let res = Command::Triangle(TriangleCmd {
+            color: 16,
+            vertices: [
+                Vec3::new(-1.0, 0.0, 1.0),
+                Vec3::new(-1.0, 0.0, -1.0),
+                Vec3::new(1.0, 0.0, -1.0),
+            ],
+            uvs: Some([
+                Vec2::new(0.0, 1.0),
+                Vec2::new(0.0, 0.0),
+                Vec2::new(1.0, 0.0),
+            ]),
+        });
+        assert_eq!(
+            read_line(b"3 16 -1 0 1 -1 0 -1 1 0 -1 0 1 0 0 1 0"),
+            Ok((&b""[..], res))
+        );
+    }
+
+    #[test]
+    fn test_read_quad_cmd_uvs() {
+        let res = Command::Quad(QuadCmd {
+            color: 16,
+            vertices: [
+                Vec3::new(-1.0, 0.0, 1.0),
+                Vec3::new(-1.0, 0.0, -1.0),
+                Vec3::new(1.0, 0.0, -1.0),
+                Vec3::new(1.0, 1.0, -1.0),
+            ],
+            uvs: Some([
+                Vec2::new(0.0, 1.0),
+                Vec2::new(0.0, 0.0),
+                Vec2::new(1.0, 0.0),
+                Vec2::new(1.0, 1.0),
+            ]),
+        });
+        assert_eq!(
+            read_line(b"4 16 -1 0 1 -1 0 -1 1 0 -1 1 1 -1 0 1 0 0 1 0 1 1"),
             Ok((&b""[..], res))
         );
     }
