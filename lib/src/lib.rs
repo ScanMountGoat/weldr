@@ -482,10 +482,12 @@ impl SourceMap {
         // Add each of these so that they can be resolved by subfile commands later.
         let files = split_mpd_file(&source_file.cmds);
 
+        // Some files are referenced in their entirety even if they have multiple models.
+        self.source_files
+            .insert(SubFileRef::new(filename), source_file);
+
+        // TODO: More cleanly handle the fact that not all files have 0 FILE commands.
         if files.is_empty() {
-            // TODO: More cleanly handle the fact that not all files have 0 FILE commands.
-            self.source_files
-                .insert(SubFileRef::new(filename), source_file);
             filename.to_string()
         } else {
             // The first block is the "main model" of the file.
